@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import { convertPdfToChordPro } from "../pdf/chordpro.js";
+import { createChordProPdf, extractEmbeddedChordPro } from "../pdf/chordproPdf.js";
 import { convertSongselectPdf, inferKeyFromPdf, inspectSongselectPdf } from "../pdf/songselectPdf.js";
 import type { ChartFormat, ChartInspection } from "../core/music.js";
-import { renderSongSelectPreviewHtml } from "./songselectPreview.js";
 
 const keys = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B", "C#", "F#"];
 
@@ -19,7 +19,7 @@ export function App() {
   const [inspection, setInspection] = useState<ChartInspection | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [chordProUrl, setChordProUrl] = useState<string | null>(null);
-  const [chordProPreviewHtml, setChordProPreviewHtml] = useState<string | null>(null);
+  const [chordProPdfUrl, setChordProPdfUrl] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewName, setPreviewName] = useState<string | null>(null);
   const [inferredKey, setInferredKey] = useState<string | null>(null);
@@ -28,6 +28,7 @@ export function App() {
   const previewUrlRef = useRef<string | null>(null);
   const downloadUrlRef = useRef<string | null>(null);
   const chordProUrlRef = useRef<string | null>(null);
+  const chordProPdfUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     previewUrlRef.current = previewUrl;
@@ -42,10 +43,15 @@ export function App() {
   }, [chordProUrl]);
 
   useEffect(() => {
+    chordProPdfUrlRef.current = chordProPdfUrl;
+  }, [chordProPdfUrl]);
+
+  useEffect(() => {
     return () => {
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
       if (downloadUrlRef.current) URL.revokeObjectURL(downloadUrlRef.current);
       if (chordProUrlRef.current) URL.revokeObjectURL(chordProUrlRef.current);
+      if (chordProPdfUrlRef.current) URL.revokeObjectURL(chordProPdfUrlRef.current);
     };
   }, []);
 
@@ -68,6 +74,12 @@ export function App() {
     setChordProUrl(url);
   }
 
+  function replaceChordProPdfUrl(url: string | null) {
+    if (chordProPdfUrlRef.current) URL.revokeObjectURL(chordProPdfUrlRef.current);
+    chordProPdfUrlRef.current = url;
+    setChordProPdfUrl(url);
+  }
+
   const downloadName = useMemo(() => {
     if (!file) return "converted.pdf";
     const suffix = toFormat === "numbers" ? "to-numbers" : `key-${toKey.replaceAll("#", "sharp").replaceAll("b", "flat")}`;
@@ -80,41 +92,11 @@ export function App() {
     return file.name.replace(/\.pdf$/i, `.${suffix}.pro`);
   }, [file, chordProKey]);
 
-  function renderChordProPreview(chordProText: string): string {
-    const html = renderSongSelectPreviewHtml(chordProText);
-    const documentPreview = new DOMParser().parseFromString(html, "text/html");
-    const allowedTags = new Set(["DIV", "SPAN"]);
-    const allowedClasses = new Set([
-      "ssguiSheet",
-      "ssguiBodySheet",
-      "ssguiTitleSheet",
-      "ssguiTitle",
-      "ssguiMetaLine",
-      "ssguiNoteLine",
-      "ssguiKeyLine",
-      "ssguiBody",
-      "ssguiSection",
-      "ssguiColumnBreak",
-      "ssguiSongLine",
-      "ssguiColumn",
-      "ssguiChord",
-      "ssguiChordSup",
-      "ssguiLyrics",
-      "ssguiAnnotation",
-      "ssguiInlineChord",
-    ]);
+  const chordProPdfDownloadName = useMemo(() => chordProDownloadName.replace(/\.pro$/i, ".pdf"), [chordProDownloadName]);
 
-    for (const element of [...documentPreview.body.querySelectorAll("*")]) {
-      if (!allowedTags.has(element.tagName)) {
-        element.replaceWith(documentPreview.createTextNode(element.textContent ?? ""));
-        continue;
-      }
-      const classNames = [...element.classList].filter((className) => allowedClasses.has(className));
-      for (const attribute of [...element.attributes]) element.removeAttribute(attribute.name);
-      if (classNames.length) element.setAttribute("class", classNames.join(" "));
-    }
-
-    return documentPreview.body.innerHTML;
+  function resetChordProOutputs() {
+    replaceChordProUrl(null);
+    replaceChordProPdfUrl(null);
   }
 
   async function readSelectedFile(): Promise<Uint8Array> {
@@ -130,9 +112,8 @@ export function App() {
     setFile(nextFile);
     setInspection(null);
     setInferredKey(null);
-    setChordProPreviewHtml(null);
     replaceDownloadUrl(null);
-    replaceChordProUrl(null);
+    resetChordProOutputs();
     replacePreviewUrl(nextFile ? URL.createObjectURL(nextFile) : null, nextFile?.name ?? null);
     setStatus(nextFile ? "PDF ready. Source key will be inferred automatically." : "Choose a SongSelect-style PDF to begin.");
   }
@@ -146,8 +127,7 @@ export function App() {
   async function inspect() {
     setStatus("Inspecting PDF…");
     replaceDownloadUrl(null);
-    replaceChordProUrl(null);
-    setChordProPreviewHtml(null);
+    resetChordProOutputs();
     setBusy("inspect");
     try {
       const data = await readSelectedFile();
@@ -165,8 +145,7 @@ export function App() {
   async function convert() {
     setStatus("Converting PDF in browser…");
     replaceDownloadUrl(null);
-    replaceChordProUrl(null);
-    setChordProPreviewHtml(null);
+    resetChordProOutputs();
     setBusy("convert");
     try {
       const data = await readSelectedFile();
@@ -198,15 +177,27 @@ export function App() {
 
   async function convertChordPro() {
     setStatus("Converting PDF to ChordPro…");
-    replaceChordProUrl(null);
+    resetChordProOutputs();
     setBusy("chordpro");
     try {
       const data = await readSelectedFile();
-      const result = await convertPdfToChordPro(data, { outputKey: chordProKey === "source" ? undefined : chordProKey });
-      const blob = new Blob([result.chordproText], { type: "text/plain;charset=utf-8" });
-      replaceChordProUrl(URL.createObjectURL(blob));
-      setChordProPreviewHtml(renderChordProPreview(result.chordproText));
-      setStatus(`Converted to ChordPro: ${result.sectionCount} section(s), ${result.lyricLines} lyric line(s), ${result.chordLines} chord-only line(s).`);
+      const embeddedChordPro = await extractEmbeddedChordPro(data);
+      const result = embeddedChordPro ? null : await convertPdfToChordPro(data, { outputKey: chordProKey === "source" ? undefined : chordProKey });
+      const chordProText = embeddedChordPro ?? result?.chordproText;
+      if (!chordProText) throw new Error("Could not extract ChordPro from PDF.");
+      const chordProBlob = new Blob([chordProText], { type: "text/plain;charset=utf-8" });
+      replaceChordProUrl(URL.createObjectURL(chordProBlob));
+      const chordProPdfBytes = await createChordProPdf(chordProText);
+      const chordProPdfBuffer = chordProPdfBytes.buffer.slice(chordProPdfBytes.byteOffset, chordProPdfBytes.byteOffset + chordProPdfBytes.byteLength) as ArrayBuffer;
+      const chordProPdfBlob = new Blob([chordProPdfBuffer], { type: "application/pdf" });
+      const chordProPdfObjectUrl = URL.createObjectURL(chordProPdfBlob);
+      replaceChordProPdfUrl(chordProPdfObjectUrl);
+      replacePreviewUrl(URL.createObjectURL(chordProPdfBlob), chordProPdfDownloadName);
+      if (embeddedChordPro) {
+        setStatus("Loaded embedded ChordPro from Chord Cruncher PDF.");
+      } else if (result) {
+        setStatus(`Converted to ChordPro: ${result.sectionCount} section(s), ${result.lyricLines} lyric line(s), ${result.chordLines} chord-only line(s).`);
+      }
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {
@@ -289,6 +280,7 @@ export function App() {
           <button onClick={convertChordPro} disabled={!file || busy !== null}>{busy === "chordpro" ? "Converting…" : "Convert to ChordPro"}</button>
           {downloadUrl ? <a className="download" href={downloadUrl} download={downloadName}>Download converted PDF</a> : null}
           {chordProUrl ? <a className="download" href={chordProUrl} download={chordProDownloadName}>Download ChordPro</a> : null}
+          {chordProPdfUrl ? <a className="download" href={chordProPdfUrl} download={chordProPdfDownloadName}>Download ChordPro PDF</a> : null}
         </div>
 
         <div className="status" role="status">{busy ? <span className="spinner" aria-hidden="true" /> : null}{status}</div>
@@ -310,16 +302,6 @@ export function App() {
             <span>{previewName}</span>
           </div>
           <iframe src={previewUrl} title="PDF preview" />
-        </section>
-      ) : null}
-
-      {chordProPreviewHtml ? (
-        <section className="previewPanel" aria-label="ChordPro preview">
-          <div className="previewHeader">
-            <h2>ChordPro Preview</h2>
-            <span>{chordProDownloadName}</span>
-          </div>
-          <div className="chordProPreview" dangerouslySetInnerHTML={{ __html: chordProPreviewHtml }} />
         </section>
       ) : null}
     </main>
