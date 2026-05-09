@@ -1,0 +1,36 @@
+{
+  "name": "chord-cruncher",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser app for transposing SongSelect PDFs, extracting ChordPro, and previewing compact song charts.",
+  "bin": {
+    "chord-cruncher": "dist/src/cli.js"
+  },
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc -p tsconfig.json && vite build",
+    "test": "vitest run",
+    "cli": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "chordsheetjs": "^14.6.1",
+    "pdf-lib": "latest",
+    "pdfjs-dist": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "tsx": "latest",
+    "typescript": "latest",
+    "vitest": "latest"
+  },
+  "keywords": ["songselect", "chordpro", "chord-chart", "transpose", "nashville-numbers", "react"],
+  "author": "",
+  "license": "ISC"
+}
