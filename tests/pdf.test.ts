@@ -4,6 +4,7 @@ import { existsSync } from "fs";
 import { readFile } from "fs/promises";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { convertPdfToChordPro } from "../src/pdf/chordpro.js";
+import { createChordProPdf, extractEmbeddedChordPro } from "../src/pdf/chordproPdf.js";
 import { convertSongselectPdf, inferKeyFromPdf, inspectSongselectPdf } from "../src/pdf/songselectPdf.js";
 
 const christFixture = "Christ And Christ Crucified - NUM (1).pdf";
@@ -113,6 +114,15 @@ describe("PDF engine", () => {
     expect(result.chordproText).toContain("{comment: VERSE 1}");
     expect(result.chordproText).toContain("[G]Be thou [C]my vision");
     expect(result.chordproText).toContain("[D]O Lord of my [G/B]heart");
+  });
+
+  it("embeds original ChordPro source in generated ChordPro PDFs", async () => {
+    const chordproText = "{title: Café Song}\n{key: G}\n{comment: VERSE}\n[G]Hallelujah ñ\n";
+    const pdf = await createChordProPdf(chordproText);
+    const header = new TextDecoder().decode(pdf.slice(0, 4));
+
+    expect(header).toBe("%PDF");
+    await expect(extractEmbeddedChordPro(pdf)).resolves.toBe(chordproText);
   });
 
   (existsSync(christFixture) ? it : it.skip)("keeps dual-column SongSelect sections in column reading order", async () => {
