@@ -34,6 +34,16 @@ npm run build
 
 The test suite includes regression coverage for key transposition, Nashville-number handling, PDF-to-ChordPro extraction, chord superscripts, and generated SongSelect-style edge cases. Optional local fixture tests also run when you provide compatible SongSelect PDFs, but PDF fixtures are intentionally ignored and not committed.
 
+## Deployment
+
+Pushing to `main` automatically builds and deploys the web app to GitHub Pages:
+
+```txt
+https://henrygetz.github.io/chord-cruncher/
+```
+
+The deployment workflow runs `npm ci`, `npm test`, and `npm run build`, then publishes the generated `web-dist/` directory through GitHub Pages.
+
 ## CLI
 
 The browser app is the main workflow, but the repo also includes a local CLI entrypoint for conversion checks:
